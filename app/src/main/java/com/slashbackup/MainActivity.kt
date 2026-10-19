@@ -1,27 +1,41 @@
 package com.slashbackup
 
+import android.app.Activity
+import android.os.Build
 import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
-import androidx.lifecycle.viewmodel.compose.viewModel
+import android.view.Window
 import com.slashbackup.ui.screens.SlashBackupScreen
-import com.slashbackup.ui.theme.SlashBackupTheme
+import com.slashbackup.ui.theme.ObsidianTheme
 import com.slashbackup.ui.viewmodel.BackupViewModel
 
-class MainActivity : ComponentActivity() {
+class MainActivity : Activity() {
+
+    private lateinit var viewModel: BackupViewModel
+    private lateinit var screen: SlashBackupScreen
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        requestWindowFeature(Window.FEATURE_NO_TITLE)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            window.statusBarColor = ObsidianTheme.BgPrimary
+            window.navigationBarColor = ObsidianTheme.BgCard
+        }
 
         val app = application as SlashBackupApp
-        setContent {
-            SlashBackupTheme {
-                val backupViewModel: BackupViewModel = viewModel(
-                    factory = BackupViewModel.Factory(app.repository)
-                )
-                SlashBackupScreen(viewModel = backupViewModel)
-            }
+        viewModel = BackupViewModel(app.repository)
+        screen = SlashBackupScreen(this, viewModel)
+
+        setContentView(screen.getView())
+        viewModel.initialize()
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        if (::screen.isInitialized && screen.currentTab != 0) {
+            screen.navigateToTab(0)
+        } else {
+            super.onBackPressed()
         }
     }
 }

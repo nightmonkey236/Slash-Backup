@@ -9,6 +9,7 @@ export default defineConfig({
     strictPort: true,
     allowedHosts: true,
     cors: true,
+    hmr: false,
   },
   preview: {
     host: '0.0.0.0',

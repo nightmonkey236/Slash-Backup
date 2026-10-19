@@ -1,560 +1,792 @@
 package com.slashbackup.ui.screens
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Archive
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Restore
-import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.Send
-import androidx.compose.material.icons.filled.SystemUpdateAlt
-import androidx.compose.material.icons.filled.Terminal
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.slashbackup.domain.model.BackupOperationState
-import com.slashbackup.domain.model.BackupSnapshotEntity
+import android.content.Context
+import android.graphics.Typeface
+import android.text.Editable
+import android.text.TextWatcher
+import android.util.TypedValue
+import android.view.Gravity
+import android.view.View
+import android.view.ViewGroup
+import android.widget.Button
+import android.widget.EditText
+import android.widget.HorizontalScrollView
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
+import com.slashbackup.domain.model.BackupSnapshot
 import com.slashbackup.domain.model.CompressionType
 import com.slashbackup.domain.model.InstalledAppItem
+import com.slashbackup.domain.model.StepStatus
+import com.slashbackup.ui.theme.ObsidianTheme
 import com.slashbackup.ui.viewmodel.BackupViewModel
-import com.slashbackup.ui.viewmodel.SlashBackupUiState
 
-@Composable
-fun SlashBackupScreen(
-    viewModel: BackupViewModel,
-    modifier: Modifier = Modifier
+class SlashBackupScreen(
+    private val context: Context,
+    private val viewModel: BackupViewModel
 ) {
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val snapshots by viewModel.snapshots.collectAsStateWithLifecycle()
-    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
 
-    Scaffold(
-        modifier = modifier
-            .fillMaxSize()
-            .windowInsetsPadding(WindowInsets.safeDrawing),
-        bottomBar = {
-            NavigationBar {
-                NavigationBarItem(
-                    selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
-                    icon = { Icon(Icons.Default.Archive, contentDescription = "Apps & Data") },
-                    label = { Text("Apps & Data") },
-                    modifier = Modifier.testTag("nav_tab_apps")
-                )
-                NavigationBarItem(
-                    selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 },
-                    icon = { Icon(Icons.Default.SystemUpdateAlt, contentDescription = "ROM Migration") },
-                    label = { Text("Snapshots (${snapshots.size})") },
-                    modifier = Modifier.testTag("nav_tab_snapshots")
-                )
-                NavigationBarItem(
-                    selected = selectedTab == 2,
-                    onClick = { selectedTab = 2 },
-                    icon = { Icon(Icons.Default.Terminal, contentDescription = "Root Shell") },
-                    label = { Text("Root Shell") },
-                    modifier = Modifier.testTag("nav_tab_shell")
-                )
-            }
-        }
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 16.dp)
-        ) {
-            RootStatusBanner(
-                uiState = uiState,
-                onRefresh = viewModel::refreshEnvironmentAndApps
-            )
+    var currentTab: Int = 0
+        private set
 
-            OperationProgressCard(
-                operationState = uiState.operationState,
-                onDismiss = viewModel::dismissOperationBanner
-            )
-
-            when (selectedTab) {
-                0 -> AppsBackupTab(
-                    uiState = uiState,
-                    onSearchChange = viewModel::onSearchQueryChange,
-                    onToggleSystem = viewModel::onToggleSystemApps,
-                    onSelectCompression = viewModel::onSelectCompression,
-                    onToggleSelect = viewModel::onTogglePackageSelection,
-                    onSelectAll = viewModel::selectAllVisible,
-                    onBackupSelected = viewModel::backupSelectedPackages
-                )
-                1 -> SnapshotsRestoreTab(
-                    snapshots = snapshots,
-                    onRestore = viewModel::restoreSnapshot,
-                    onDelete = viewModel::deleteSnapshot
-                )
-                2 -> RootShellTerminalTab(
-                    uiState = uiState,
-                    onExecuteCommand = viewModel::executeCustomShellCommand
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun RootStatusBanner(
-    uiState: SlashBackupUiState,
-    onRefresh: () -> Unit
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp)
-            .testTag("root_status_card"),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
+    private val rootContainer = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        setBackgroundColor(ObsidianTheme.BgPrimary)
+        layoutParams = ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
         )
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.Security,
-                    contentDescription = "Root Status",
-                    tint = MaterialTheme.colorScheme.primary
+    }
+
+    private val contentScroll = ScrollView(context).apply {
+        isFillViewport = true
+        layoutParams = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            0,
+            1f
+        )
+    }
+
+    private val pageContainer = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        val pad = ObsidianTheme.dp(context, 16)
+        setPadding(pad, pad, pad, pad)
+    }
+
+    private val bottomBar = LinearLayout(context).apply {
+        orientation = LinearLayout.HORIZONTAL
+        setBackgroundColor(ObsidianTheme.BgCard)
+        val padV = ObsidianTheme.dp(context, 8)
+        setPadding(padV, padV, padV, padV)
+        layoutParams = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        )
+    }
+
+    init {
+        contentScroll.addView(pageContainer)
+        rootContainer.addView(buildTopHeader())
+        rootContainer.addView(contentScroll)
+        rootContainer.addView(bottomBar)
+
+        viewModel.setStateListener {
+            renderActiveTab()
+        }
+        renderBottomNav()
+        renderActiveTab()
+    }
+
+    fun getView(): View = rootContainer
+
+    fun navigateToTab(index: Int) {
+        currentTab = index
+        renderBottomNav()
+        renderActiveTab()
+    }
+
+    private fun buildTopHeader(): View {
+        val header = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(ObsidianTheme.BgCard)
+            val padH = ObsidianTheme.dp(context, 16)
+            val padV = ObsidianTheme.dp(context, 14)
+            setPadding(padH, padV, padH, padV)
+        }
+
+        val titleRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        val titleText = TextView(context).apply {
+            text = "Slash Backup"
+            setTextColor(ObsidianTheme.TextPrimary)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        val apiBadge = TextView(context).apply {
+            text = "API 24–35 • ROOT"
+            setTextColor(ObsidianTheme.EmeraldPrimary)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            typeface = Typeface.MONOSPACE
+            val pH = ObsidianTheme.dp(context, 10)
+            val pV = ObsidianTheme.dp(context, 4)
+            setPadding(pH, pV, pH, pV)
+            background = ObsidianTheme.roundedBox(
+                context,
+                ObsidianTheme.EmeraldDark,
+                ObsidianTheme.BorderEmerald,
+                1,
+                8
+            )
+        }
+
+        titleRow.addView(titleText)
+        titleRow.addView(apiBadge)
+
+        val subtitle = TextView(context).apply {
+            text = "Custom ROM App + Data Migration • TAR/ZSTD • SELinux Context Repair"
+            setTextColor(ObsidianTheme.TextSecondary)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            setPadding(0, ObsidianTheme.dp(context, 4), 0, 0)
+        }
+
+        header.addView(titleRow)
+        header.addView(subtitle)
+        return header
+    }
+
+    private fun renderBottomNav() {
+        bottomBar.removeAllViews()
+        val tabs = listOf("Apps & Data", "ROM Migrate", "Snapshots", "Root Shell")
+        for (i in tabs.indices) {
+            val active = currentTab == i
+            val btn = TextView(context).apply {
+                text = tabs[i]
+                gravity = Gravity.CENTER
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                typeface = Typeface.create(
+                    Typeface.DEFAULT,
+                    if (active) Typeface.BOLD else Typeface.NORMAL
                 )
-                Spacer(modifier = Modifier.width(12.dp))
-                Column {
-                    Text(
-                        text = "Slash Backup • ${uiState.rootState.rootProvider}",
-                        style = MaterialTheme.typography.titleMedium
+                setTextColor(if (active) ObsidianTheme.EmeraldPrimary else ObsidianTheme.TextSecondary)
+                val padV = ObsidianTheme.dp(context, 10)
+                setPadding(0, padV, 0, padV)
+                background = if (active) {
+                    ObsidianTheme.roundedBox(
+                        context,
+                        ObsidianTheme.EmeraldDark,
+                        ObsidianTheme.BorderEmerald,
+                        1,
+                        10
                     )
-                    Text(
-                        text = "Slot ${uiState.rootState.activeSlot} • SELinux ${uiState.rootState.selinuxMode} • ${uiState.rootState.romBuildId}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                } else {
+                    null
+                }
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    val m = ObsidianTheme.dp(context, 3)
+                    setMargins(m, 0, m, 0)
+                }
+                setOnClickListener {
+                    navigateToTab(i)
                 }
             }
-            IconButton(
-                onClick = onRefresh,
-                modifier = Modifier.testTag("refresh_root_button")
-            ) {
-                Icon(Icons.Default.Refresh, contentDescription = "Refresh Root Status")
+            bottomBar.addView(btn)
+        }
+    }
+
+    private fun renderActiveTab() {
+        pageContainer.removeAllViews()
+        pageContainer.addView(buildRootTelemetryBanner())
+        pageContainer.addView(buildStatusBanner())
+
+        when (currentTab) {
+            0 -> renderAppsBackupTab()
+            1 -> renderRomMigrationTab()
+            2 -> renderSnapshotsTab()
+            3 -> renderRootTerminalTab()
+        }
+    }
+
+    private fun buildRootTelemetryBanner(): View {
+        val env = viewModel.rootState
+        val card = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = ObsidianTheme.dp(context, 12)
+            setPadding(pad, pad, pad, pad)
+            background = ObsidianTheme.roundedBox(
+                context,
+                ObsidianTheme.BgCard,
+                ObsidianTheme.BorderSubtle,
+                1,
+                12
+            )
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = ObsidianTheme.dp(context, 10)
+            }
+        }
+
+        val line1 = TextView(context).apply {
+            val stateLabel = if (env.isRootGranted) "UID 0 GRANTED" else "SANDBOX / READY"
+            text = "SU Engine: ${env.providerName} ($stateLabel)"
+            setTextColor(ObsidianTheme.EmeraldPrimary)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+        }
+
+        val freeGb = env.storageFreeBytes / (1024 * 1024 * 1024).coerceAtLeast(1)
+        val line2 = TextView(context).apply {
+            text = "SELinux: ${env.selinuxStatus} • Compression: ${viewModel.compression.name} • Free: ${freeGb}GB"
+            setTextColor(ObsidianTheme.TextSecondary)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            setPadding(0, ObsidianTheme.dp(context, 4), 0, 0)
+        }
+
+        card.addView(line1)
+        card.addView(line2)
+        return card
+    }
+
+    private fun buildStatusBanner(): View {
+        return TextView(context).apply {
+            text = viewModel.statusBanner
+            setTextColor(ObsidianTheme.CyanAccent)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            typeface = Typeface.MONOSPACE
+            val pad = ObsidianTheme.dp(context, 10)
+            setPadding(pad, pad, pad, pad)
+            background = ObsidianTheme.roundedBox(
+                context,
+                ObsidianTheme.CyanDark,
+                ObsidianTheme.CyanAccent,
+                1,
+                10
+            )
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = ObsidianTheme.dp(context, 12)
             }
         }
     }
-}
 
-@Composable
-private fun OperationProgressCard(
-    operationState: BackupOperationState,
-    onDismiss: () -> Unit
-) {
-    when (operationState) {
-        is BackupOperationState.Idle -> Unit
-        is BackupOperationState.Running -> {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                )
-            ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Text(
-                        text = "Processing ${operationState.currentPackage} (${operationState.completedCount + 1}/${operationState.totalCount})",
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    Text(
-                        text = operationState.currentStep,
-                        style = MaterialTheme.typography.labelSmall
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    LinearProgressIndicator(
-                        progress = { operationState.progressFraction },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
+    private fun renderAppsBackupTab() {
+        val controlsCard = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = ObsidianTheme.dp(context, 12)
+            setPadding(pad, pad, pad, pad)
+            background = ObsidianTheme.roundedBox(
+                context,
+                ObsidianTheme.BgCard,
+                ObsidianTheme.BorderSubtle,
+                1,
+                12
+            )
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = ObsidianTheme.dp(context, 12)
             }
         }
-        is BackupOperationState.Completed -> {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer
-                )
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Default.CheckCircle, contentDescription = "Completed")
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = operationState.summaryMessage,
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Dismiss")
-                    }
-                }
-            }
-        }
-        is BackupOperationState.Error -> {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "Error (${operationState.packageName}): ${operationState.reason}",
-                        color = MaterialTheme.colorScheme.error
-                    )
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Dismiss")
-                    }
-                }
-            }
-        }
-    }
-}
 
-@Composable
-private fun AppsBackupTab(
-    uiState: SlashBackupUiState,
-    onSearchChange: (String) -> Unit,
-    onToggleSystem: (Boolean) -> Unit,
-    onSelectCompression: (CompressionType) -> Unit,
-    onToggleSelect: (String) -> Unit,
-    onSelectAll: (Boolean) -> Unit,
-    onBackupSelected: () -> Unit
-) {
-    Column(modifier = Modifier.fillMaxSize()) {
-        OutlinedTextField(
-            value = uiState.searchQuery,
-            onValueChange = onSearchChange,
-            label = { Text("Filter package or app name...") },
-            modifier = Modifier
-                .fillMaxWidth()
-                .testTag("search_apps_input"),
-            singleLine = true
+        val searchInput = EditText(context).apply {
+            hint = "Search installed packages (e.g. magisk, termux)..."
+            setHintTextColor(ObsidianTheme.TextMuted)
+            setTextColor(ObsidianTheme.TextPrimary)
+            setText(viewModel.searchQuery)
+            setSingleLine(true)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            val pad = ObsidianTheme.dp(context, 10)
+            setPadding(pad, pad, pad, pad)
+            background = ObsidianTheme.roundedBox(
+                context,
+                ObsidianTheme.BgPrimary,
+                ObsidianTheme.BorderSubtle,
+                1,
+                8
+            )
+        }
+
+        val filterRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, ObsidianTheme.dp(context, 8), 0, ObsidianTheme.dp(context, 8))
+        }
+
+        filterRow.addView(
+            makeChipButton(
+                label = if (viewModel.showSystemApps) "Showing: User + System" else "Showing: User Apps",
+                active = viewModel.showSystemApps
+            ) {
+                viewModel.toggleShowSystemApps()
+            }
+        )
+        filterRow.addView(
+            makeChipButton(label = "Select All", active = false) {
+                viewModel.selectAllVisible(true)
+            }
+        )
+        filterRow.addView(
+            makeChipButton(label = "Clear", active = false) {
+                viewModel.selectAllVisible(false)
+            }
         )
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            FilterChip(
-                selected = uiState.includeSystemApps,
-                onClick = { onToggleSystem(!uiState.includeSystemApps) },
-                label = { Text("System Apps") },
-                modifier = Modifier.testTag("filter_system_apps_chip")
-            )
-            CompressionType.entries.forEach { comp ->
-                FilterChip(
-                    selected = uiState.compression == comp,
-                    onClick = { onSelectCompression(comp) },
-                    label = { Text(comp.name) }
-                )
-            }
+        val optionsRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, 0, 0, ObsidianTheme.dp(context, 8))
         }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "${uiState.selectedApps.size} selected / ${uiState.filteredApps.size} packages",
-                style = MaterialTheme.typography.bodyMedium
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(
-                    onClick = { onSelectAll(uiState.selectedApps.isEmpty()) },
-                    modifier = Modifier.testTag("toggle_select_all_button")
-                ) {
-                    Text(if (uiState.selectedApps.isEmpty()) "Select All" else "Clear")
-                }
-                Button(
-                    onClick = onBackupSelected,
-                    enabled = uiState.selectedApps.isNotEmpty(),
-                    modifier = Modifier.testTag("backup_selected_button")
-                ) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = "Run Backup")
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Backup (${uiState.selectedApps.size})")
-                }
+        optionsRow.addView(
+            makeChipButton(
+                label = if (viewModel.includeApk) "[✓] Base APK" else "[ ] Base APK",
+                active = viewModel.includeApk
+            ) {
+                viewModel.toggleIncludeApk()
             }
-        }
-
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(uiState.filteredApps, key = { it.packageName }) { app ->
-                AppPackageCard(
-                    app = app,
-                    onToggle = { onToggleSelect(app.packageName) }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun AppPackageCard(
-    app: InstalledAppItem,
-    onToggle: () -> Unit
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onToggle)
-            .testTag("app_item_${app.packageName}"),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
         )
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Checkbox(
-                checked = app.isSelected,
-                onCheckedChange = { onToggle() }
+        optionsRow.addView(
+            makeChipButton(
+                label = if (viewModel.includeData) "[✓] /data/data" else "[ ] /data/data",
+                active = viewModel.includeData
+            ) {
+                viewModel.toggleIncludeData()
+            }
+        )
+        optionsRow.addView(
+            makeChipButton(
+                label = "Codec: ${viewModel.compression.name}",
+                active = true
+            ) {
+                val values = CompressionType.values()
+                val next = values[(viewModel.compression.ordinal + 1) % values.size]
+                viewModel.setCompressionMode(next)
+            }
+        )
+
+        val selectedCount = viewModel.allApps.count { it.selected }
+        val backupBtn = Button(context).apply {
+            text = if (viewModel.isBusy) {
+                "Archiving with Root TAR+ZSTD..."
+            } else {
+                "Run Root Backup ($selectedCount Selected)"
+            }
+            isAllCaps = false
+            setTextColor(ObsidianTheme.BgPrimary)
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            background = ObsidianTheme.roundedBox(
+                context,
+                ObsidianTheme.EmeraldPrimary,
+                ObsidianTheme.BorderEmerald,
+                1,
+                10
             )
-            Spacer(modifier = Modifier.width(8.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = app.appName,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = "${app.packageName} • v${app.versionName}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = "APK: ${formatBytes(app.apkSizeBytes)} • /data/data: ${formatBytes(app.dataSizeBytes)} • ${if (app.hasSplitApks) "Split APKs" else "Base APK"}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary
-                )
+            setOnClickListener {
+                viewModel.SearchQuerySync(searchInput.text?.toString() ?: "")
+                viewModel.runBatchBackup()
             }
         }
-    }
-}
 
-@Composable
-private fun SnapshotsRestoreTab(
-    snapshots: List<BackupSnapshotEntity>,
-    onRestore: (BackupSnapshotEntity) -> Unit,
-    onDelete: (Long) -> Unit
-) {
-    if (snapshots.isEmpty()) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = "No root backup snapshots yet. Select apps in the first tab to create a Zstandard tar archive.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+        val searchBtnRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
         }
-        return
+        searchInput.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        val filterApplyBtn = makeChipButton("Filter", true) {
+            viewModel.updateSearchQuery(searchInput.text?.toString() ?: "")
+        }
+        searchBtnRow.addView(searchInput)
+        searchBtnRow.addView(filterApplyBtn)
+
+        controlsCard.addView(searchBtnRow)
+        controlsCard.addView(filterRow)
+        controlsCard.addView(optionsRow)
+        controlsCard.addView(backupBtn)
+        pageContainer.addView(controlsCard)
+
+        val apps = viewModel.filteredApps().take(40)
+        val countHeader = TextView(context).apply {
+            text = "INSTALLED DEVICE PACKAGES (${apps.size})"
+            setTextColor(ObsidianTheme.TextMuted)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+            setPadding(0, 0, 0, ObsidianTheme.dp(context, 8))
+        }
+        pageContainer.addView(countHeader)
+
+        for (app in apps) {
+            pageContainer.addView(buildAppItemCard(app))
+        }
     }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        contentPadding = PaddingValues(vertical = 8.dp)
-    ) {
-        items(snapshots, key = { it.id }) { item ->
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("snapshot_card_${item.id}"),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(text = "${item.appName} (v${item.versionName})", style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            text = item.archivePath,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = "${item.compression} • ${formatBytes(item.sizeBytes)} • SHA256: ${item.sha256Checksum}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                    Row {
-                        IconButton(
-                            onClick = { onRestore(item) },
-                            modifier = Modifier.testTag("restore_snapshot_${item.id}")
-                        ) {
-                            Icon(Icons.Default.Restore, contentDescription = "Restore Snapshot")
-                        }
-                        IconButton(
-                            onClick = { onDelete(item.id) },
-                            modifier = Modifier.testTag("delete_snapshot_${item.id}")
-                        ) {
-                            Icon(Icons.Default.Delete, contentDescription = "Delete Snapshot")
-                        }
-                    }
+    private fun BackupViewModel.SearchQuerySync(q: String) {
+        if (q != searchQuery) {
+            updateSearchQuery(q)
+        }
+    }
+
+    private fun buildAppItemCard(app: InstalledAppItem): View {
+        val card = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = ObsidianTheme.dp(context, 12)
+            setPadding(pad, pad, pad, pad)
+            background = ObsidianTheme.roundedBox(
+                context,
+                if (app.selected) ObsidianTheme.EmeraldDark else ObsidianTheme.BgCard,
+                if (app.selected) ObsidianTheme.EmeraldPrimary else ObsidianTheme.BorderSubtle,
+                1,
+                10
+            )
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = ObsidianTheme.dp(context, 8)
+            }
+            setOnClickListener {
+                viewModel.toggleAppSelection(app.packageName)
+            }
+        }
+
+        val topRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        val title = TextView(context).apply {
+            val checkPrefix = if (app.selected) "[✓] " else "[ ] "
+            text = "$checkPrefix${app.appName} (v${app.versionName})"
+            setTextColor(ObsidianTheme.TextPrimary)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        val uidBadge = TextView(context).apply {
+            text = "UID ${app.uid}"
+            setTextColor(if (app.isSystemApp) ObsidianTheme.AmberWarning else ObsidianTheme.EmeraldPrimary)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            typeface = Typeface.MONOSPACE
+        }
+
+        topRow.addView(title)
+        topRow.addView(uidBadge)
+
+        val pkgText = TextView(context).apply {
+            val apkMb = (app.apkSizeBytes / (1024 * 1024)).coerceAtLeast(1)
+            val dataMb = (app.dataSizeBytes / (1024 * 1024)).coerceAtLeast(1)
+            text = "${app.packageName} • APK: ${apkMb}MB • Data: ${dataMb}MB"
+            setTextColor(ObsidianTheme.TextSecondary)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            typeface = Typeface.MONOSPACE
+            setPadding(0, ObsidianTheme.dp(context, 4), 0, 0)
+        }
+
+        card.addView(topRow)
+        card.addView(pkgText)
+        return card
+    }
+
+    private fun renderRomMigrationTab() {
+        val introCard = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = ObsidianTheme.dp(context, 14)
+            setPadding(pad, pad, pad, pad)
+            background = ObsidianTheme.roundedBox(
+                context,
+                ObsidianTheme.BgCard,
+                ObsidianTheme.BorderEmerald,
+                1,
+                12
+            )
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = ObsidianTheme.dp(context, 12)
+            }
+        }
+
+        val heading = TextView(context).apply {
+            text = "Custom ROM Post-Flash Migration Engine"
+            setTextColor(ObsidianTheme.TextPrimary)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+
+        val desc = TextView(context).apply {
+            text = "When switching between LineageOS, PixelOS, Evolution X, or AOSP, Android assigns new Linux UIDs to restored apps. This 6-step root pipeline automatically detects the new UID via stat -c '%u' and repairs SELinux labels."
+            setTextColor(ObsidianTheme.TextSecondary)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            setPadding(0, ObsidianTheme.dp(context, 6), 0, ObsidianTheme.dp(context, 12))
+        }
+
+        val runMigrationBtn = Button(context).apply {
+            text = if (viewModel.isBusy) "Running 6-Step Migration..." else "Execute 6-Step ROM Migration Restore"
+            isAllCaps = false
+            setTextColor(ObsidianTheme.BgPrimary)
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            background = ObsidianTheme.roundedBox(
+                context,
+                ObsidianTheme.EmeraldPrimary,
+                ObsidianTheme.BorderEmerald,
+                1,
+                10
+            )
+            setOnClickListener {
+                viewModel.runRomMigrationPipeline()
+            }
+        }
+
+        introCard.addView(heading)
+        introCard.addView(desc)
+        introCard.addView(runMigrationBtn)
+        pageContainer.addView(introCard)
+
+        for (step in viewModel.migrationSteps) {
+            val stepCard = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                val pad = ObsidianTheme.dp(context, 12)
+                setPadding(pad, pad, pad, pad)
+                val border = when (step.status) {
+                    StepStatus.COMPLETED -> ObsidianTheme.EmeraldPrimary
+                    StepStatus.RUNNING -> ObsidianTheme.CyanAccent
+                    else -> ObsidianTheme.BorderSubtle
+                }
+                background = ObsidianTheme.roundedBox(context, ObsidianTheme.BgCard, border, 1, 10)
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    bottomMargin = ObsidianTheme.dp(context, 8)
                 }
             }
-        }
-    }
-}
 
-@Composable
-private fun RootShellTerminalTab(
-    uiState: SlashBackupUiState,
-    onExecuteCommand: (String) -> Unit
-) {
-    var commandInput by rememberSaveable { mutableStateOf("") }
-
-    Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            OutlinedTextField(
-                value = commandInput,
-                onValueChange = { commandInput = it },
-                label = { Text("su -c command (e.g. restorecon -Rv /data/data)") },
-                modifier = Modifier
-                    .weight(1f)
-                    .testTag("root_command_input"),
-                singleLine = true
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            IconButton(
-                onClick = {
-                    onExecuteCommand(commandInput)
-                    commandInput = ""
-                },
-                modifier = Modifier.testTag("send_root_command_button")
-            ) {
-                Icon(Icons.Default.Send, contentDescription = "Run Root Command")
-            }
-        }
-
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .clip(RoundedCornerShape(12.dp))
-                .background(MaterialTheme.colorScheme.surface)
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(uiState.shellLogs, key = { it.id }) { log ->
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        text = "root@android:/ # ${log.command}",
-                        fontFamily = FontFamily.Monospace,
-                        color = MaterialTheme.colorScheme.primary,
-                        style = MaterialTheme.typography.labelSmall
-                    )
-                    Text(
-                        text = log.output,
-                        fontFamily = FontFamily.Monospace,
-                        color = if (log.isSuccess) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.labelSmall
-                    )
+            val stepTitle = TextView(context).apply {
+                val badge = when (step.status) {
+                    StepStatus.COMPLETED -> "[DONE]"
+                    StepStatus.RUNNING -> "[RUNNING]"
+                    StepStatus.FAILED -> "[FAILED]"
+                    StepStatus.READY -> "[STEP ${step.id}]"
                 }
+                text = "$badge ${step.title}"
+                setTextColor(
+                    if (step.status == StepStatus.COMPLETED) ObsidianTheme.EmeraldPrimary
+                    else ObsidianTheme.TextPrimary
+                )
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             }
+
+            val stepCmd = TextView(context).apply {
+                text = "$ ${step.command}"
+                setTextColor(ObsidianTheme.CyanAccent)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+                typeface = Typeface.MONOSPACE
+                setPadding(0, ObsidianTheme.dp(context, 4), 0, ObsidianTheme.dp(context, 4))
+            }
+
+            val stepDesc = TextView(context).apply {
+                text = step.description
+                setTextColor(ObsidianTheme.TextSecondary)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            }
+
+            stepCard.addView(stepTitle)
+            stepCard.addView(stepCmd)
+            stepCard.addView(stepDesc)
+            pageContainer.addView(stepCard)
         }
     }
-}
 
-private fun formatBytes(bytes: Long): String {
-    val mb = bytes.toDouble() / (1024.0 * 1024.0)
-    return "%.1f MB".format(mb)
+    private fun renderSnapshotsTab() {
+        val header = TextView(context).apply {
+            text = "SAVED SQLITE BACKUP SNAPSHOTS (${viewModel.snapshots.size})"
+            setTextColor(ObsidianTheme.TextMuted)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+            setPadding(0, 0, 0, ObsidianTheme.dp(context, 8))
+        }
+        pageContainer.addView(header)
+
+        for (snap in viewModel.snapshots) {
+            pageContainer.addView(buildSnapshotCard(snap))
+        }
+    }
+
+    private fun buildSnapshotCard(snap: BackupSnapshot): View {
+        val card = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = ObsidianTheme.dp(context, 12)
+            setPadding(pad, pad, pad, pad)
+            background = ObsidianTheme.roundedBox(
+                context,
+                ObsidianTheme.BgCard,
+                ObsidianTheme.BorderSubtle,
+                1,
+                10
+            )
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = ObsidianTheme.dp(context, 10)
+            }
+        }
+
+        val title = TextView(context).apply {
+            val sizeMb = (snap.sizeBytes / (1024 * 1024)).coerceAtLeast(1)
+            text = "${snap.appName} v${snap.versionName} • ${sizeMb}MB (${snap.compression})"
+            setTextColor(ObsidianTheme.TextPrimary)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+
+        val pathView = TextView(context).apply {
+            text = "${snap.archivePath}\nSELinux: ${snap.selinuxContext}"
+            setTextColor(ObsidianTheme.TextSecondary)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            typeface = Typeface.MONOSPACE
+            setPadding(0, ObsidianTheme.dp(context, 4), 0, ObsidianTheme.dp(context, 8))
+        }
+
+        val actionRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+
+        actionRow.addView(
+            makeChipButton("Restore + Fix UID/SELinux", true) {
+                viewModel.runSnapshotRestore(snap)
+            }
+        )
+        actionRow.addView(
+            makeChipButton("Delete Archive", false) {
+                viewModel.deleteSnapshot(snap)
+            }
+        )
+
+        card.addView(title)
+        card.addView(pathView)
+        card.addView(actionRow)
+        return card
+    }
+
+    private fun renderRootTerminalTab() {
+        val cmdCard = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = ObsidianTheme.dp(context, 12)
+            setPadding(pad, pad, pad, pad)
+            background = ObsidianTheme.roundedBox(
+                context,
+                ObsidianTheme.BgCard,
+                ObsidianTheme.BorderSubtle,
+                1,
+                12
+            )
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = ObsidianTheme.dp(context, 10)
+            }
+        }
+
+        val input = EditText(context).apply {
+            hint = "root@android:# Enter su command (e.g. id, getenforce, df -h)..."
+            setHintTextColor(ObsidianTheme.TextMuted)
+            setTextColor(ObsidianTheme.EmeraldPrimary)
+            setSingleLine(true)
+            typeface = Typeface.MONOSPACE
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            val pad = ObsidianTheme.dp(context, 10)
+            setPadding(pad, pad, pad, pad)
+            background = ObsidianTheme.roundedBox(
+                context,
+                ObsidianTheme.BgTerminal,
+                ObsidianTheme.BorderSubtle,
+                1,
+                8
+            )
+        }
+
+        val quickScroll = HorizontalScrollView(context).apply {
+            setPadding(0, ObsidianTheme.dp(context, 8), 0, ObsidianTheme.dp(context, 8))
+        }
+        val quickRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+        val quickCmds = listOf(
+            "id",
+            "getenforce",
+            "df -h /data",
+            "pm list packages -3",
+            "ls -la /sdcard/SlashBackup"
+        )
+        for (q in quickCmds) {
+            quickRow.addView(
+                makeChipButton(q, false) {
+                    viewModel.executeTerminalCommand(q)
+                }
+            )
+        }
+        quickScroll.addView(quickRow)
+
+        val execBtn = Button(context).apply {
+            text = "Execute in Root Shell (su -c)"
+            isAllCaps = false
+            setTextColor(ObsidianTheme.BgPrimary)
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            background = ObsidianTheme.roundedBox(
+                context,
+                ObsidianTheme.EmeraldPrimary,
+                ObsidianTheme.BorderEmerald,
+                1,
+                10
+            )
+            setOnClickListener {
+                val cmdText = input.text?.toString() ?: ""
+                input.setText("")
+                viewModel.executeTerminalCommand(cmdText)
+            }
+        }
+
+        cmdCard.addView(input)
+        cmdCard.addView(quickScroll)
+        cmdCard.addView(execBtn)
+        pageContainer.addView(cmdCard)
+
+        val consoleBox = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = ObsidianTheme.dp(context, 12)
+            setPadding(pad, pad, pad, pad)
+            background = ObsidianTheme.roundedBox(
+                context,
+                ObsidianTheme.BgTerminal,
+                ObsidianTheme.BorderSubtle,
+                1,
+                10
+            )
+        }
+
+        val logsText = TextView(context).apply {
+            text = viewModel.terminalLogs.joinToString("\n")
+            setTextColor(ObsidianTheme.EmeraldPrimary)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            typeface = Typeface.MONOSPACE
+        }
+        consoleBox.addView(logsText)
+        pageContainer.addView(consoleBox)
+    }
+
+    private fun makeChipButton(label: String, active: Boolean, onClick: () -> Unit): View {
+        return TextView(context).apply {
+            text = label
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+            setTextColor(if (active) ObsidianTheme.EmeraldPrimary else ObsidianTheme.TextSecondary)
+            val pH = ObsidianTheme.dp(context, 10)
+            val pV = ObsidianTheme.dp(context, 6)
+            setPadding(pH, pV, pH, pV)
+            background = ObsidianTheme.roundedBox(
+                context,
+                if (active) ObsidianTheme.EmeraldDark else ObsidianTheme.BgElevated,
+                if (active) ObsidianTheme.BorderEmerald else ObsidianTheme.BorderSubtle,
+                1,
+                8
+            )
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                rightMargin = ObsidianTheme.dp(context, 6)
+            }
+            setOnClickListener { onClick() }
+        }
+    }
 }

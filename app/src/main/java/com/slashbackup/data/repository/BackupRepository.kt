@@ -2,144 +2,137 @@ package com.slashbackup.data.repository
 
 import android.content.Context
 import android.content.pm.ApplicationInfo
-import android.content.pm.PackageManager
 import android.os.Build
-import com.slashbackup.data.local.BackupSnapshotDao
+import com.slashbackup.data.local.SlashBackupDatabase
 import com.slashbackup.data.root.RootBackupEngine
-import com.slashbackup.domain.model.BackupSnapshotEntity
+import com.slashbackup.domain.model.BackupSnapshot
 import com.slashbackup.domain.model.CompressionType
 import com.slashbackup.domain.model.InstalledAppItem
 import com.slashbackup.domain.model.RootEnvironmentState
-import com.slashbackup.domain.model.ShellLogEntry
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.withContext
 import java.io.File
-import java.security.MessageDigest
+import java.util.UUID
 
 class BackupRepository(
     private val context: Context,
-    private val snapshotDao: BackupSnapshotDao,
+    private val database: SlashBackupDatabase,
     private val rootEngine: RootBackupEngine
 ) {
-    val allSnapshots: Flow<List<BackupSnapshotEntity>> = snapshotDao.observeAllSnapshots()
 
-    suspend fun checkRootEnvironment(): RootEnvironmentState {
-        return rootEngine.inspectRootEnvironment()
+    fun probeRootEnvironment(): RootEnvironmentState {
+        return rootEngine.probeRootEnvironment()
     }
 
-    suspend fun loadInstalledApps(includeSystem: Boolean): List<InstalledAppItem> =
-        withContext(Dispatchers.IO) {
-            try {
-                val pm = context.packageManager
-                val packages = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    pm.getInstalledPackages(PackageManager.PackageInfoFlags.of(0L))
-                } else {
-                    @Suppress("DEPRECATION")
-                    pm.getInstalledPackages(0)
-                }
-
-                packages.mapNotNull { pkgInfo ->
-                    val appInfo = pkgInfo.applicationInfo ?: return@mapNotNull null
-                    val isSystem = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
-                    if (!includeSystem && isSystem) return@mapNotNull null
-
-                    val label = pm.getApplicationLabel(appInfo).toString()
-                    val sourceFile = File(appInfo.sourceDir)
-                    val apkBytes = if (sourceFile.exists()) sourceFile.length() else 28_500_000L
-                    val splitCount = appInfo.splitSourceDirs?.size ?: 0
-                    val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                        pkgInfo.longVersionCode
-                    } else {
-                        @Suppress("DEPRECATION")
-                        pkgInfo.versionCode.toLong()
-                    }
-
-                    InstalledAppItem(
-                        packageName = pkgInfo.packageName,
-                        appName = label,
-                        versionName = pkgInfo.versionName ?: "1.0",
-                        versionCode = versionCode,
-                        isSystemApp = isSystem,
-                        apkSizeBytes = apkBytes,
-                        dataSizeBytes = (apkBytes * 0.65).toLong().coerceAtLeast(4_200_000L),
-                        externalMediaBytes = 0L,
-                        hasSplitApks = splitCount > 0,
-                        selinuxContext = "u:object_r:app_data_file:s0:c512,c768"
-                    )
-                }.sortedBy { it.appName.lowercase() }
-            } catch (e: Exception) {
-                emptyList()
-            }
+    fun loadInstalledApplications(includeSystem: Boolean): List<InstalledAppItem> {
+        val pm = context.packageManager
+        val packages = try {
+            pm.getInstalledPackages(0)
+        } catch (_: Throwable) {
+            emptyList()
         }
 
-    suspend fun performAppBackup(
-        app: InstalledAppItem,
+        val items = mutableListOf<InstalledAppItem>()
+        for (pkgInfo in packages) {
+            val appInfo = pkgInfo.applicationInfo ?: continue
+            val isSystem = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+            if (!includeSystem && isSystem) continue
+
+            val label = try {
+                pm.getApplicationLabel(appInfo).toString()
+            } catch (_: Throwable) {
+                pkgInfo.packageName
+            }
+
+            val versionName = pkgInfo.versionName ?: "1.0"
+            val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                pkgInfo.longVersionCode
+            } else {
+                @Suppress("DEPRECATION")
+                pkgInfo.versionCode.toLong()
+            }
+
+            val sourceFile = File(appInfo.sourceDir ?: "")
+            val apkBytes = if (sourceFile.exists()) sourceFile.length() else 18_500_000L
+            val estimatedDataBytes = (apkBytes * 6L) / 5L + 4_200_000L
+
+            items.add(
+                InstalledAppItem(
+                    packageName = pkgInfo.packageName,
+                    appName = label,
+                    versionName = versionName,
+                    versionCode = versionCode,
+                    uid = appInfo.uid,
+                    isSystemApp = isSystem,
+                    sourceDir = appInfo.sourceDir ?: "/data/app/${pkgInfo.packageName}/base.apk",
+                    dataDir = appInfo.dataDir ?: "/data/data/${pkgInfo.packageName}",
+                    apkSizeBytes = apkBytes,
+                    dataSizeBytes = estimatedDataBytes,
+                    selected = false
+                )
+            )
+        }
+
+        return items.sortedWith(
+            compareBy<InstalledAppItem> { it.isSystemApp }
+                .thenBy { it.appName.lowercase() }
+        )
+    }
+
+    fun getSnapshots(): List<BackupSnapshot> {
+        return database.getAllSnapshots()
+    }
+
+    fun backupApps(
+        apps: List<InstalledAppItem>,
         compression: CompressionType,
         includeApk: Boolean,
         includeData: Boolean,
-        includeMedia: Boolean,
-        romFingerprint: String,
-        onLog: (ShellLogEntry) -> Unit
-    ): Result<BackupSnapshotEntity> {
-        val backupDir = "/sdcard/SlashBackup/archives"
-        val result = rootEngine.backupPackage(
-            app = app,
-            backupDir = backupDir,
-            compression = compression,
-            includeApk = includeApk,
-            includeData = includeData,
-            includeMedia = includeMedia,
-            onCommandExecuted = onLog
-        )
-
-        return result.map { archivePath ->
-            val entity = BackupSnapshotEntity(
+        onLog: (String) -> Unit
+    ): List<BackupSnapshot> {
+        val created = mutableListOf<BackupSnapshot>()
+        for (app in apps) {
+            val destPath = rootEngine.backupApplication(
+                app = app,
+                compression = compression,
+                includeApk = includeApk,
+                includeData = includeData,
+                onLog = onLog
+            )
+            val totalSize = (if (includeApk) app.apkSizeBytes else 0L) +
+                (if (includeData) app.dataSizeBytes else 0L)
+            val snapshot = BackupSnapshot(
+                id = "snap-" + UUID.randomUUID().toString().take(8),
                 packageName = app.packageName,
                 appName = app.appName,
                 versionName = app.versionName,
                 versionCode = app.versionCode,
-                archivePath = archivePath,
+                archivePath = destPath,
                 compression = compression.name,
+                sizeBytes = totalSize,
                 includeApk = includeApk,
-                includeInternalData = includeData,
-                includeExternalMedia = includeMedia,
-                sizeBytes = app.totalSizeBytes,
-                sha256Checksum = sha256Short("${app.packageName}:${app.versionCode}:${System.currentTimeMillis()}"),
-                romFingerprint = romFingerprint
+                includeData = includeData,
+                selinuxContext = "u:object_r:app_data_file:s0:c512,c768",
+                createdAt = System.currentTimeMillis()
             )
-            val id = snapshotDao.insertSnapshot(entity)
-            entity.copy(id = id)
+            database.upsertSnapshot(snapshot)
+            created.add(snapshot)
         }
+        return created
     }
 
-    suspend fun performSnapshotRestore(
-        snapshot: BackupSnapshotEntity,
-        onLog: (ShellLogEntry) -> Unit
-    ): Result<Unit> {
-        val compression = runCatching { CompressionType.valueOf(snapshot.compression) }
-            .getOrDefault(CompressionType.ZSTD)
-
-        return rootEngine.restorePackage(
+    fun restoreSnapshot(snapshot: BackupSnapshot, onLog: (String) -> Unit): Boolean {
+        return rootEngine.restoreApplicationWithMigrationFix(
             packageName = snapshot.packageName,
+            appName = snapshot.appName,
             archivePath = snapshot.archivePath,
-            compression = compression,
-            restoreApk = snapshot.includeApk,
-            restoreData = snapshot.includeInternalData,
-            onCommandExecuted = onLog
+            onLog = onLog
         )
     }
 
-    suspend fun deleteSnapshot(id: Long) {
-        snapshotDao.deleteSnapshotById(id)
+    fun deleteSnapshot(id: String) {
+        database.deleteSnapshot(id)
     }
 
-    suspend fun runRootCommand(cmd: String): ShellLogEntry {
-        return rootEngine.executeCustomCommand(cmd)
-    }
-
-    private fun sha256Short(input: String): String {
-        val bytes = MessageDigest.getInstance("SHA-256").digest(input.toByteArray())
-        return bytes.take(8).joinToString("") { "%02x".format(it) }
+    fun executeCustomRootCommand(command: String): RootBackupEngine.ShellExecutionResult {
+        return rootEngine.executeRootCommand(command)
     }
 }

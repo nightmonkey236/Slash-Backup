@@ -22,10 +22,11 @@ android {
 
     defaultConfig {
         applicationId = "com.slashbackup"
-        minSdk = 26
+        minSdk = 24
         targetSdk = 35
         versionCode = 1
         versionName = "1.0.0"
+        multiDexEnabled = true
 
         vectorDrawables {
             useSupportLibrary = true
@@ -34,13 +35,10 @@ android {
 
     signingConfigs {
         create("debugConfig") {
-            val debugStore = file("${rootDir}/debug.keystore")
-            if (debugStore.exists()) {
-                storeFile = debugStore
-                storePassword = "android"
-                keyAlias = "androiddebugkey"
-                keyPassword = "android"
-            }
+            storeFile = file("${rootDir}/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
             enableV1Signing = true
             enableV2Signing = true
             enableV3Signing = true
@@ -63,7 +61,7 @@ android {
                 keyPassword = keystoreProperties.getProperty("keyPassword")
                     ?: System.getenv("KEY_PASSWORD")
                     ?: "slashbackup123"
-            } else if (file("${rootDir}/debug.keystore").exists()) {
+            } else {
                 storeFile = file("${rootDir}/debug.keystore")
                 storePassword = "android"
                 keyAlias = "androiddebugkey"
@@ -88,11 +86,7 @@ android {
         }
         debug {
             isMinifyEnabled = false
-            applicationIdSuffix = ".debug"
-            versionNameSuffix = "-debug"
-            if (file("${rootDir}/debug.keystore").exists()) {
-                signingConfig = signingConfigs.getByName("debugConfig")
-            }
+            signingConfig = signingConfigs.getByName("debugConfig")
         }
     }
 
@@ -144,6 +138,7 @@ dependencies {
     implementation(libs.libsu.core)
     implementation(libs.libsu.service)
     implementation(libs.libsu.nio)
+    implementation("androidx.multidex:multidex:2.0.1")
 
     debugImplementation(libs.androidx.compose.ui.tooling)
 }

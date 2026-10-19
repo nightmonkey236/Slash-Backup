@@ -1,66 +1,48 @@
 package com.slashbackup.ui.theme
 
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Typography
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
+import android.content.Context
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 
-private val ObsidianColorScheme = darkColorScheme(
-    primary = Color(0xFF10B981),          // Emerald Root Accent
-    onPrimary = Color(0xFF032217),
-    primaryContainer = Color(0xFF064E3B),
-    onPrimaryContainer = Color(0xFFA7F3D0),
-    secondary = Color(0xFF38BDF8),        // Cyan Recovery Accent
-    onSecondary = Color(0xFF082F49),
-    secondaryContainer = Color(0xFF0C4A6E),
-    onSecondaryContainer = Color(0xFFBAE6FD),
-    tertiary = Color(0xFFF59E0B),         // Amber SELinux / Flash Accent
-    background = Color(0xFF090D16),       // Deep Obsidian
-    onBackground = Color(0xFFE2E8F0),
-    surface = Color(0xFF111827),
-    onSurface = Color(0xFFF1F5F9),
-    surfaceVariant = Color(0xFF1E293B),
-    onSurfaceVariant = Color(0xFF94A3B8),
-    error = Color(0xFFEF4444)
-)
+object ObsidianTheme {
+    val BgPrimary = Color.parseColor("#090D16")
+    val BgCard = Color.parseColor("#111827")
+    val BgElevated = Color.parseColor("#1E293B")
+    val BgTerminal = Color.parseColor("#05080F")
+    val BorderSubtle = Color.parseColor("#1F2937")
+    val BorderEmerald = Color.parseColor("#059669")
 
-private val SlashTypography = Typography(
-    headlineMedium = TextStyle(
-        fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.Bold,
-        fontSize = 24.sp,
-        lineHeight = 30.sp
-    ),
-    titleMedium = TextStyle(
-        fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 16.sp,
-        lineHeight = 22.sp
-    ),
-    bodyMedium = TextStyle(
-        fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.Normal,
-        fontSize = 14.sp,
-        lineHeight = 20.sp
-    ),
-    labelSmall = TextStyle(
-        fontFamily = FontFamily.Monospace,
-        fontWeight = FontWeight.Medium,
-        fontSize = 11.sp,
-        lineHeight = 15.sp
-    )
-)
+    val EmeraldPrimary = Color.parseColor("#10B981")
+    val EmeraldDark = Color.parseColor("#064E3B")
+    val CyanAccent = Color.parseColor("#38BDF8")
+    val CyanDark = Color.parseColor("#0C4A6E")
+    val AmberWarning = Color.parseColor("#F59E0B")
+    val AmberDark = Color.parseColor("#451A03")
+    val CoralDanger = Color.parseColor("#EF4444")
 
-@Composable
-fun SlashBackupTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = ObsidianColorScheme,
-        typography = SlashTypography,
-        content = content
-    )
+    val TextPrimary = Color.parseColor("#F8FAFC")
+    val TextSecondary = Color.parseColor("#94A3B8")
+    val TextMuted = Color.parseColor("#64748B")
+
+    fun dp(context: Context, value: Int): Int {
+        val density = context.resources.displayMetrics.density
+        return (value * density + 0.5f).toInt()
+    }
+
+    fun roundedBox(
+        context: Context,
+        fillColor: Int,
+        strokeColor: Int = Color.TRANSPARENT,
+        strokeWidthDp: Int = 1,
+        cornerRadiusDp: Int = 12
+    ): GradientDrawable {
+        return GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            setColor(fillColor)
+            cornerRadius = dp(context, cornerRadiusDp).toFloat()
+            if (strokeColor != Color.TRANSPARENT) {
+                setStroke(dp(context, strokeWidthDp), strokeColor)
+            }
+        }
+    }
 }
