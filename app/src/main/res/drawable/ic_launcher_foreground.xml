@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Shield silhouette -->
+    <path
+        android:fillColor="#FF10B981"
+        android:pathData="M54,22L28,33v20c0,18.5 11.1,35.6 26,42c14.9,-6.4 26,-23.5 26,-42V33L54,22z" />
+    <!-- Inner terminal slash & prompt -->
+    <path
+        android:fillColor="#FF090D16"
+        android:pathData="M47,68L61,40h5L52,68H47z" />
+</vector>
